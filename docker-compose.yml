@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./
+      dockerfile: ./Dockerfile
+    container_name: twitter-api-sample
+    volumes:
+      - '.:/go/app'
+    ports:
+      - '8555:8555'
+    tty: true
+    stdin_open: true
+    environment:
+      SIGNINGKEY: ${SIGNINGKEY}
+      CREDENTIAL_TOKEN: ${CREDENTIAL_TOKEN}
+      CREDENTIAL_SECRET: ${CREDENTIAL_SECRET}
+      CALLBACK_URL: ${CALLBACK_URL}
