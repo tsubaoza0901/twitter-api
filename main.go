@@ -32,11 +32,12 @@ type jwtCustomClaims struct {
 	jwt.StandardClaims
 }
 
+// OAuth ...
 type OAuth struct {
 	client oauth.Client
 }
 
-// User user info
+// User user info of Twitter
 type User struct {
 	ID          string     `gorm:"primary_key;not null" json:"id_str"`
 	ScreenName  string     `gorm:"not null" json:"screen_name"`
@@ -49,6 +50,7 @@ type User struct {
 	DeletedAt   *time.Time `gorm:"null" json:"-"`
 }
 
+// AuthURLResponse ...
 type AuthURLResponse struct {
 	JwtToken string `json:"jwt_token"`
 	URL      string `json:"url"`
@@ -78,7 +80,6 @@ func InitRouting(e *echo.Echo, o *OAuth) {
 
 	e.POST("/signup", o.Signup)
 	auth.GET("/twitter/callback", o.TwitterCallback)
-	auth.GET("/private", Private)
 }
 
 // Signup ...
@@ -95,7 +96,7 @@ func (o *OAuth) Signup(c echo.Context) error {
 		return c.Redirect(http.StatusFound, "/login") // 登録済みユーザーの場合はログインページにリダイレクト
 	}
 
-	// get twitter Access Token and Access Secret
+	// get Temporary Credentials(Access Token and Secret)
 	credentials, err := o.client.RequestTemporaryCredentials(
 		nil,
 		os.Getenv("CALLBACK_URL"), // Twitterに登録したCallback URL（認可完了後のリダイレクト時に、TwitterCallbackメソッドを呼び出すためのURL）
@@ -138,13 +139,13 @@ func (o *OAuth) TwitterCallback(c echo.Context) error {
 		Secret: claims.AccessSecret,
 	}
 
-	// 認可後にリダイレクトURL（Callback URL）に含まれるoauth_verifierパラメータが、事前に取得したAccessTokenと一致するかを確認
+	// 認可後にリダイレクトURL（Callback URL）に含まれるoauth_verifierパラメータが事前に取得したAccessTokenと一致するかを確認
 	if credentials.Token != c.QueryParam("oauth_token") {
 		log.Printf("credentials.Token: %v\n", credentials.Token)
 		return c.JSON(http.StatusInternalServerError, "invalid credentials.Token")
 	}
 
-	// get access credentials
+	// get Credentials(Access Token and Secret)
 	accessCredentials, _, err := o.client.RequestToken(nil, credentials, c.QueryParam("oauth_verifier"))
 	if err != nil {
 		log.Println("faild with o.client.RequestToken()")
@@ -214,13 +215,6 @@ func decodeResponse(resp *http.Response, data interface{}) error {
 		return fmt.Errorf("get %s returned status %d, %s", resp.Request.URL, resp.StatusCode, p)
 	}
 	return json.NewDecoder(resp.Body).Decode(data)
-}
-
-// Private ログイン後のみアクセス可能なPrivateメソッド
-func Private(c echo.Context) error {
-	user := c.Get("claims").(*jwt.Token)
-	claims := user.Claims.(*jwtCustomClaims)
-	return c.String(http.StatusOK, fmt.Sprintf("AccessToken:%v, AccessSecret:%v", claims.AccessToken, claims.AccessSecret))
 }
 
 // --------
