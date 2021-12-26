@@ -80,6 +80,7 @@ func InitRouting(e *echo.Echo, o *OAuth) {
 
 	e.POST("/signup", o.Signup)
 	auth.GET("/twitter/callback", o.TwitterCallback)
+	auth.GET("/mypage", Mypage)
 }
 
 // Signup ...
@@ -215,6 +216,10 @@ func decodeResponse(resp *http.Response, data interface{}) error {
 		return fmt.Errorf("get %s returned status %d, %s", resp.Request.URL, resp.StatusCode, p)
 	}
 	return json.NewDecoder(resp.Body).Decode(data)
+}
+
+func Mypage(c echo.Context) error {
+	return c.JSON(http.StatusOK, "This is Mypage")
 }
 
 // --------
