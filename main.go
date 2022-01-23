@@ -10,8 +10,12 @@ import (
 	"os"
 	"time"
 
-	"github.com/golang-jwt/jwt"
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
+
 	"github.com/gomodule/oauth1/oauth"
+	"github.com/gorilla/sessions"
+	"github.com/labstack/echo-contrib/session"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 )
@@ -26,11 +30,11 @@ type LoginInfo struct {
 	Password string `json:"password"`
 }
 
-type jwtCustomClaims struct {
-	AccessToken  string `json:"access_token"`  // Token Key for Twitter
-	AccessSecret string `json:"access_secret"` // Secret Key for Twitter
-	jwt.StandardClaims
-}
+// type jwtCustomClaims struct {
+// 	AccessToken  string `json:"access_token"`  // Token Key for Twitter
+// 	AccessSecret string `json:"access_secret"` // Secret Key for Twitter
+// 	jwt.StandardClaims
+// }
 
 // OAuth ...
 type OAuth struct {
@@ -52,22 +56,22 @@ type User struct {
 
 // AuthURLResponse ...
 type AuthURLResponse struct {
-	JwtToken string `json:"jwt_token"`
+	// JwtToken string `json:"jwt_token"`
 	URL      string `json:"url"`
 }
 
-// --------
-// JWT Config↓
-// --------
+// // --------
+// // JWT Config↓
+// // --------
 
-var signingKey = []byte(os.Getenv("SIGNINGKEY"))
+// var signingKey = []byte(os.Getenv("SIGNINGKEY"))
 
-// JwtConfig ...
-var JwtConfig = middleware.JWTConfig{
-	SigningKey: signingKey,
-	Claims:     &jwtCustomClaims{}, // カスタムClaims構造体 ※デフォルトはjwt.MapClaims{}
-	ContextKey: "jwt_token",        // カスタムContextKey ※デフォルトは "user"
-}
+// // JwtConfig ...
+// var JwtConfig = middleware.JWTConfig{
+// 	SigningKey: signingKey,
+// 	Claims:     &jwtCustomClaims{}, // カスタムClaims構造体 ※デフォルトはjwt.MapClaims{}
+// 	ContextKey: "jwt_token",        // カスタムContextKey ※デフォルトは "user"
+// }
 
 // --------
 // router↓
@@ -75,27 +79,27 @@ var JwtConfig = middleware.JWTConfig{
 
 // InitRouting ...
 func InitRouting(e *echo.Echo, o *OAuth) {
-	auth := e.Group("/auth")
-	auth.Use(middleware.JWTWithConfig(JwtConfig))
+	// auth := e.Group("/auth")
+	// auth.Use(middleware.JWTWithConfig(JwtConfig))
 
-	e.POST("/signup", o.Signup)
-	auth.GET("/twitter/callback", o.TwitterCallback)
-	auth.GET("/mypage", Mypage)
+	e.GET("/signup", o.Signup)
+	e.GET("/twitter/callback", o.TwitterCallback)
+	e.GET("/auth_token", AuthToken)
 }
 
 // Signup ...
 func (o *OAuth) Signup(c echo.Context) error {
-	loginInfo := &LoginInfo{}
+	// loginInfo := &LoginInfo{}
 
-	if err := c.Bind(loginInfo); err != nil {
-		return c.JSON(http.StatusInternalServerError, err.Error())
-	}
+	// if err := c.Bind(loginInfo); err != nil {
+	// 	return c.JSON(http.StatusInternalServerError, err.Error())
+	// }
 
-	// 存在チェック（実際は、DBからUIDに対応するログイン情報を取得し、その有無で登録済みかどうかを判断するイメージ）
-	if loginInfo.UID == "example@gmil.com" && loginInfo.Password == "password" {
-		log.Printf("Redirect URL: %s", "/login")
-		return c.Redirect(http.StatusFound, "/login") // 登録済みユーザーの場合はログインページにリダイレクト
-	}
+	// // 存在チェック（実際は、DBからUIDに対応するログイン情報を取得し、その有無で登録済みかどうかを判断するイメージ）
+	// if loginInfo.UID == "example@gmil.com" && loginInfo.Password == "password" {
+	// 	log.Printf("Redirect URL: %s", "/login")
+	// 	return c.Redirect(http.StatusFound, "/login") // 登録済みユーザーの場合はログインページにリダイレクト
+	// }
 
 	// get Temporary Credentials(Access Token and Secret)
 	credentials, err := o.client.RequestTemporaryCredentials(
@@ -109,35 +113,57 @@ func (o *OAuth) Signup(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
-	// Set custom claims
-	claims := &jwtCustomClaims{
-		AccessToken:  credentials.Token,
-		AccessSecret: credentials.Secret,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: time.Now().Add(time.Hour * 72).Unix(),
-		},
-	}
-
-	// Create token with claims
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-
-	// Generate encoded token and send it as response.
-	t, err := token.SignedString([]byte(os.Getenv("SIGNINGKEY")))
+	sess, err := session.Get("session_name", c)
 	if err != nil {
-		log.Printf("SIGNINGKEY:%v\n", os.Getenv("SIGNINGKEY"))
-		return err
+		return c.JSON(http.StatusInternalServerError, "failed to session.Get()")
 	}
 
-	return c.JSON(http.StatusOK, AuthURLResponse{JwtToken: t, URL: o.client.AuthorizationURL(credentials, nil)})
+	if !sess.IsNew {
+		// 何かしらチェック？
+	}
+
+	// set options
+    sess.Options = &sessions.Options{
+        Path:     "/",
+		// Domain: "localhost:3999",
+        MaxAge:   30, // session時間は30秒
+        HttpOnly: true,
+		// Secure: true,
+		// SameSite: http.SameSiteNoneMode,
+    }
+
+	// set values
+	sess.Values["accessToken"] = credentials.Token
+	sess.Values["accessSecret"] = credentials.Secret
+
+
+	// save session
+    if err := sess.Save(c.Request(), c.Response()); err != nil {
+		return c.JSON(http.StatusInternalServerError, "failed to sess.Save()")
+	}
+
+	res := AuthURLResponse{
+		URL: o.client.AuthorizationURL(credentials, nil),
+	}
+
+	return c.JSON(http.StatusOK, res)
 }
 
 func (o *OAuth) TwitterCallback(c echo.Context) error {
-	jwtToken := c.Get(JwtConfig.ContextKey).(*jwt.Token)
-	claims := jwtToken.Claims.(*jwtCustomClaims)
+	sess, err := session.Get("session_name", c)
+	if err != nil {
+		log.Printf("err:%v", err)
+		return c.JSON(http.StatusInternalServerError, "failed to session.Get()")
+	}
+
+	if sess.IsNew {
+		fmt.Printf("session:%+v", *sess)
+		return c.JSON(http.StatusInternalServerError, "session is new")
+	}
 
 	credentials := &oauth.Credentials{
-		Token:  claims.AccessToken,
-		Secret: claims.AccessSecret,
+		Token: sess.Values["accessToken"].(string),
+		Secret: sess.Values["accessSecret"].(string),
 	}
 
 	// 認可後にリダイレクトURL（Callback URL）に含まれるoauth_verifierパラメータが事前に取得したAccessTokenと一致するかを確認
@@ -154,32 +180,58 @@ func (o *OAuth) TwitterCallback(c echo.Context) error {
 	}
 
 	// get twitter account info
-	user, err := o.GetUserInfo(accessCredentials)
+	twitterUserInfo, err := o.GetUserInfo(accessCredentials)
 	if err != nil {
 		log.Println("faild with GetUserInfo()")
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
-	// generate wtitter account url
-	user.URL = "https://twitter.com/" + user.ScreenName
+	if _, err := FetchUserByID(twitterUserInfo.ID); err != nil {
+		if err != gorm.ErrRecordNotFound {
+			log.Println("faild with FetchUserByID()")
+			return c.JSON(http.StatusInternalServerError, err.Error())
+		}
 
-	// set signed flalg
-	user.IsSignedIn = true
+		// generate wtitter account url
+		twitterUserInfo.URL = "https://twitter.com/" + twitterUserInfo.ScreenName
 
-	claims.Id = user.ID
+		// set signed flag
+		twitterUserInfo.IsSignedIn = true
 
-	// Create token with claims
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+		if err := SaveUser(&twitterUserInfo); err != nil {
+			log.Println("faild with SaveUser()")
+			return c.JSON(http.StatusInternalServerError, err.Error())
+		}
 
-	// Generate encoded token and send it as response.
-	t, err := token.SignedString([]byte(os.Getenv("SIGNINGKEY")))
-	if err != nil {
-		log.Printf("SIGNINGKEY:%v\n", os.Getenv("SIGNINGKEY"))
-		return err
+		// claims.Id = twitterUserInfo.ID
+
+		// Create token with claims
+		// token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+		// // Generate encoded token and send it as response.
+		// t, err := token.SignedString([]byte(os.Getenv("SIGNINGKEY")))
+		// if err != nil {
+		// 	log.Printf("SIGNINGKEY:%v\n", os.Getenv("SIGNINGKEY"))
+		// 	return err
+		// }
+		// return c.Redirect(http.StatusFound, "/auth_token?id="+twitterUserInfo.ID+"")
+		return c.Redirect(http.StatusFound, "http://localhost:3999/profiles?id="+twitterUserInfo.ID+"")
 	}
 
-	log.Printf("Redirect URL: %s", "/mypage?"+t+"")
-	return c.Redirect(http.StatusFound, "/mypage?"+t+"") // signup後の遷移先にリダイレクト ※ もしかしたらリダイレクトの場合、Bearerも送られるかもなのでその場合はtoken用のパラメータは不要かも
+	// claims.Id = twitterUserInfo.ID
+
+	// // Create token with claims
+	// token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	// // Generate encoded token and send it as response.
+	// t, err := token.SignedString([]byte(os.Getenv("SIGNINGKEY")))
+	// if err != nil {
+	// 	log.Printf("SIGNINGKEY:%v\n", os.Getenv("SIGNINGKEY"))
+	// 	return err
+	// }
+
+	// return c.Redirect(http.StatusFound, "/auth_token?id="+twitterUserInfo.ID+"")
+	return c.Redirect(http.StatusFound, "http://localhost:3999/top?id="+twitterUserInfo.ID+"")
 }
 
 // GetUserInfo get twitter user info
@@ -218,8 +270,55 @@ func decodeResponse(resp *http.Response, data interface{}) error {
 	return json.NewDecoder(resp.Body).Decode(data)
 }
 
-func Mypage(c echo.Context) error {
-	return c.JSON(http.StatusOK, "This is Mypage")
+func FetchUserByID(id string) (*User, error) {
+	user := &User{}
+	if err := db.Debug().Where("id = ?", id).First(user).Error; err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+func SaveUser(user *User) error {
+	if err := db.Debug().Create(user).Error; err != nil {
+		return err
+	}
+	return nil
+}
+
+func AuthToken(c echo.Context) error {
+	id := c.QueryParam("id")
+
+	// TODO:UsersテーブルからTwitterIDをキーにデータを取得して、取得できたらTokenを発行してtopページにリダイレクト、取得できない（未登録）の場合にはuser登録画面へ
+
+	// UsersテーブルにTwitterIDをキーに取得できるレコードがあるか？
+	// ①ある（ユーザー登録済み）
+	// Tokenを発行し、topページへ
+
+	// ②ない（ユーザー未登録）
+	// Twitterから取得して保存したテーブルの情報を取得し、レスポンスで返す？
+
+	// if token != c.QueryParam("token") {
+	// 	log.Printf("token: %v\n", token)
+	// 	return c.JSON(http.StatusInternalServerError, "invalid credentials.Token")
+	// }
+
+	return c.JSON(http.StatusOK, "This is Mypage, id: "+id+"")
+}
+
+// --------
+// db↓
+// --------
+
+var db *gorm.DB
+
+// InitDB ...
+func InitDB() *gorm.DB {
+	dsn := "root:root@tcp(db:3306)/twitterapisample?parseTime=True&loc=Local"
+	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	return db
 }
 
 // --------
@@ -229,6 +328,7 @@ func Mypage(c echo.Context) error {
 func InitMiddleware(e *echo.Echo) {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
+	e.Use(session.Middleware(sessions.NewCookieStore([]byte(os.Getenv("SECRET")))))
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
@@ -256,6 +356,14 @@ func NewOAuth() *OAuth {
 }
 
 func main() {
+	db = InitDB()
+
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sqlDB.Close()
+
 	e := echo.New()
 
 	InitMiddleware(e)

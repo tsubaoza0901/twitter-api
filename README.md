@@ -10,10 +10,45 @@
 $ docker-compose up -d --build
 ```
 
-## 2．アプリケーションの起動
+## 2．データベースの作成
+
+① DB コンテナ内へ移動
 
 ```
-root@fe385569a625:/go/src/app/server_side# go run main.go
+$ docker exec -it twitter-api-sample-db bash
+```
+
+② DB 接続
+
+```
+root@ec19d85976f4:/# mysql -u root -h db -p
+Enter password:
+```
+
+③ DB 作成
+
+```
+mysql> CREATE DATABASE twitterapisample;
+```
+
+## 3．マイグレーションファイルの実行
+
+① アプリケーションコンテナ内へ移動
+
+```
+$ docker exec -it twitter-api-sample bash
+```
+
+② マイグレーションファイルの実行
+
+```
+root@fe385569a625:/go/src/app# goose up
+```
+
+## 4．アプリケーションの起動
+
+```
+root@fe385569a625:/go/src/app# go run main.go
 ```
 
 ## その他
