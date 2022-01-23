@@ -215,7 +215,7 @@ func (o *OAuth) TwitterCallback(c echo.Context) error {
 		// 	return err
 		// }
 		// return c.Redirect(http.StatusFound, "/auth_token?id="+twitterUserInfo.ID+"")
-		return c.Redirect(http.StatusFound, "http://localhost:3999/profiles?id="+twitterUserInfo.ID+"")
+		return c.Redirect(http.StatusFound, "http://localhost:3999/profiles?id="+twitterUserInfo.Name+"")
 	}
 
 	// claims.Id = twitterUserInfo.ID
@@ -231,7 +231,7 @@ func (o *OAuth) TwitterCallback(c echo.Context) error {
 	// }
 
 	// return c.Redirect(http.StatusFound, "/auth_token?id="+twitterUserInfo.ID+"")
-	return c.Redirect(http.StatusFound, "http://localhost:3999/top?id="+twitterUserInfo.ID+"")
+	return c.Redirect(http.StatusFound, "http://localhost:3999/top?id="+twitterUserInfo.Name+"")
 }
 
 // GetUserInfo get twitter user info
