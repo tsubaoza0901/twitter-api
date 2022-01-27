@@ -24,10 +24,9 @@ import (
 // model↓
 // --------
 
-// LoginInfo ...
-type LoginInfo struct {
-	UID      string `json:"uid"`
-	Password string `json:"password"`
+// TwitterLoginInfo ...
+type TwitterLoginInfo struct {
+	CallbackURL      string `json:"callback_url"`
 }
 
 // type jwtCustomClaims struct {
@@ -60,6 +59,10 @@ type AuthURLResponse struct {
 	URL      string `json:"url"`
 }
 
+type Response struct {
+	Exist bool `json:"exist"`
+}
+
 // // --------
 // // JWT Config↓
 // // --------
@@ -82,18 +85,18 @@ func InitRouting(e *echo.Echo, o *OAuth) {
 	// auth := e.Group("/auth")
 	// auth.Use(middleware.JWTWithConfig(JwtConfig))
 
-	e.GET("/signup", o.Signup)
+	e.POST("/signup", o.Signup)
 	e.GET("/twitter/callback", o.TwitterCallback)
 	e.GET("/auth_token", AuthToken)
 }
 
 // Signup ...
 func (o *OAuth) Signup(c echo.Context) error {
-	// loginInfo := &LoginInfo{}
+	twitterLoginInfo := &TwitterLoginInfo{}
 
-	// if err := c.Bind(loginInfo); err != nil {
-	// 	return c.JSON(http.StatusInternalServerError, err.Error())
-	// }
+	if err := c.Bind(twitterLoginInfo); err != nil {
+		return c.JSON(http.StatusInternalServerError, err.Error())
+	}
 
 	// // 存在チェック（実際は、DBからUIDに対応するログイン情報を取得し、その有無で登録済みかどうかを判断するイメージ）
 	// if loginInfo.UID == "example@gmil.com" && loginInfo.Password == "password" {
@@ -104,12 +107,12 @@ func (o *OAuth) Signup(c echo.Context) error {
 	// get Temporary Credentials(Access Token and Secret)
 	credentials, err := o.client.RequestTemporaryCredentials(
 		nil,
-		os.Getenv("CALLBACK_URL"), // Twitterに登録したCallback URL（認可完了後のリダイレクト時に、TwitterCallbackメソッドを呼び出すためのURL）
+		twitterLoginInfo.CallbackURL, // Twitterに登録したCallback URL（認可完了後のリダイレクト時に、TwitterCallbackメソッドを呼び出すためのURL）
 		nil,
 	)
 	if err != nil {
 		log.Println("failed with client.RequestTemporaryCredentials()")
-		log.Println(os.Getenv("CALLBACK_URL"))
+		log.Printf("CallbackURL: %s", twitterLoginInfo.CallbackURL)
 		return c.JSON(http.StatusInternalServerError, err.Error())
 	}
 
@@ -135,7 +138,6 @@ func (o *OAuth) Signup(c echo.Context) error {
 	// set values
 	sess.Values["accessToken"] = credentials.Token
 	sess.Values["accessSecret"] = credentials.Secret
-
 
 	// save session
     if err := sess.Save(c.Request(), c.Response()); err != nil {
@@ -214,8 +216,8 @@ func (o *OAuth) TwitterCallback(c echo.Context) error {
 		// 	log.Printf("SIGNINGKEY:%v\n", os.Getenv("SIGNINGKEY"))
 		// 	return err
 		// }
-		// return c.Redirect(http.StatusFound, "/auth_token?id="+twitterUserInfo.ID+"")
-		return c.Redirect(http.StatusFound, "http://localhost:3999/profiles?id="+twitterUserInfo.Name+"")
+		return c.JSON(http.StatusOK, Response{Exist: false})
+		// return c.Redirect(http.StatusFound, "http://localhost:3999/profiles?id="+twitterUserInfo.Name+"")
 	}
 
 	// claims.Id = twitterUserInfo.ID
@@ -230,8 +232,8 @@ func (o *OAuth) TwitterCallback(c echo.Context) error {
 	// 	return err
 	// }
 
-	// return c.Redirect(http.StatusFound, "/auth_token?id="+twitterUserInfo.ID+"")
-	return c.Redirect(http.StatusFound, "http://localhost:3999/top?id="+twitterUserInfo.Name+"")
+	return c.JSON(http.StatusOK, Response{Exist: true})
+	// return c.Redirect(http.StatusFound, "http://localhost:3999/top?id="+twitterUserInfo.Name+"")
 }
 
 // GetUserInfo get twitter user info
